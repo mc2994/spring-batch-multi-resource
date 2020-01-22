@@ -223,6 +223,8 @@ public class BatchConfiguration {
 //
 //		System.out.println(">>>>>>>>>>>>>> " + System.currentTimeMillis());
 //		jobLauncher.run(myJob(), params);
+		
+		
 		System.out.println(" Job Started at :"+ new Date());
 		JobParameters param = new JobParametersBuilder().addString("JobID",
 		String.valueOf(System.currentTimeMillis())).toJobParameters();
