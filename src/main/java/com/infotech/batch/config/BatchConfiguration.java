@@ -2,9 +2,7 @@ package com.infotech.batch.config;
 
 import java.io.IOException;
 import java.util.Date;
-
 import javax.sql.DataSource;
-
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.JobParameters;
@@ -32,7 +30,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.core.io.support.ResourcePatternResolver;
@@ -41,7 +39,6 @@ import org.springframework.core.task.TaskExecutor;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
-
 import com.infotech.batch.model.Person;
 import com.infotech.batch.processor.PersonItemProcessor;
 
@@ -57,7 +54,9 @@ public class BatchConfiguration {
 	public StepBuilderFactory stepBuilderFactory;
 
 	@Value(value = "classpath*:input/persons_*.csv")
-	private Resource[] resources;
+	private Resource[] inputResources;
+	
+	private Resource outputResource = new FileSystemResource("output/outputData.csv");
 
 	@Autowired
 	private DataSource dataSource;
@@ -65,6 +64,37 @@ public class BatchConfiguration {
 	@Autowired
 	private JobLauncher jobLauncher;
 
+	@Bean
+	public PersonItemProcessor processor() {
+		return new PersonItemProcessor();
+	}
+
+	@Bean
+	public DBWriter itemWriter() {
+		return new DBWriter();
+	}
+
+	// this function will write the data to csv file (output folder)  
+	@Bean
+	public FlatFileItemWriter<Person> writer() {
+		FlatFileItemWriter<Person> writer = new FlatFileItemWriter<Person>();
+		writer.setResource(outputResource);
+		writer.setName("testWriterName");
+		writer.setLineAggregator(new DelimitedLineAggregator<Person>() {
+			{
+				setDelimiter(",");
+				setFieldExtractor(new BeanWrapperFieldExtractor<Person>() {
+					{
+						setNames(new String[] { "firstName", "lastName", "email", "age" });
+					}
+				});
+			}
+		});
+		
+		return writer;
+	}
+	
+	// read data from the database
 	@Bean
 	public JdbcCursorItemReader<Person> dbReader() {
 		JdbcCursorItemReader<Person> cursorItemReader = new JdbcCursorItemReader<>();
@@ -95,15 +125,16 @@ public class BatchConfiguration {
 		return reader;
 	}
 
-	// orig with property resources
+	// this will read multiple csv files from the input directory
 	@Bean
 	public MultiResourceItemReader<Person> multiResourceItemReader1() {
 		MultiResourceItemReader<Person> multiResourceItemReader = new MultiResourceItemReader<Person>();
-		multiResourceItemReader.setResources(resources);
+		multiResourceItemReader.setResources(inputResources);
 		multiResourceItemReader.setDelegate(reader());
 		return multiResourceItemReader;
 	}
 
+	// this will read multiple csv files from the input directory in a different set up
 	@Bean
 	public MultiResourceItemReader<Person> multiResourceItemReader() {
 		Resource[] resources = null;
@@ -113,65 +144,58 @@ public class BatchConfiguration {
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-		MultiResourceItemReader<Person> reader = new MultiResourceItemReader<>();
+		MultiResourceItemReader<Person> reader = new MultiResourceItemReader<Person>();
 		reader.setResources(resources);
 		reader.setDelegate(reader());
 		return reader;
 	}
 
 	@Bean
-	public PersonItemProcessor processor() {
-		return new PersonItemProcessor();
-	}
-
-	@Bean
-	public DBWriter itemWriter() {
-		return new DBWriter();
-	}
-
-	@Bean
-	public FlatFileItemWriter<Person> writer() {
-		FlatFileItemWriter<Person> writer = new FlatFileItemWriter<>();
-		writer.setResource(new ClassPathResource("output/persons_output.csv"));
-		writer.setName("testWriterName");
-		writer.setLineAggregator(new DelimitedLineAggregator<Person>() {
-			{
-				setDelimiter(",");
-				setFieldExtractor(new BeanWrapperFieldExtractor<Person>() {
-					{
-						setNames(new String[] { "firstName", "lastName", "email", "age" });
-					}
-				});
-			}
-		});
-		return writer;
-	}
-
-	@Bean
-	public Job myJob() {
-		return jobBuilderFactory.get("myJob").incrementer(new RunIdIncrementer()).start(readFromCSVToDB())
-				.next(readFromDBToCSV()).build();
+	public Job myJob(JobCompletionNotificationListener listener) {
+		return jobBuilderFactory.get("myJob")
+				.incrementer(new RunIdIncrementer())
+				.listener(listener)
+				.start(readFromCSVToDB())
+				.next(readFromDBToCSV())
+				.build();
 	}
 
 	@Bean
 	public Step readFromCSVToDB() {
-		return stepBuilderFactory.get("readFromCSVToDB").<Person, Person>chunk(10).reader(multiResourceItemReader()) // read
-																														// multiple
-																														// csv
-				.processor(processor()).writer(itemWriter()) // save data to db
-				// .taskExecutor(taskAsync())
+		return stepBuilderFactory
+				.get("readFromCSVToDB")
+				.<Person, Person>chunk(10)
+				.reader(multiResourceItemReader1()) // read multiple csv
+				.processor(processor())
+				.writer(itemWriter()) // save data to db
+				//.taskExecutor(taskAsync()) //multi threaded
 				.build();
 	}
 
 	@Bean
 	public Step readFromDBToCSV() {
-		return stepBuilderFactory.get("readFromDBToCSV").<Person, Person>chunk(10).reader(dbReader()) // read data from
-																										// db
-				.processor(processor()).writer(writer()) // write to csv file
-				// .taskExecutor(taskAsync())
+		return stepBuilderFactory.get("readFromDBToCSV")
+				.<Person, Person>chunk(10)
+				.reader(dbReader()) // read data from db
+				.processor(processor())
+				.writer(writer()) // write data to csv file
+				//.taskExecutor(taskAsync()) //multi threaded
 				.build();
 	}
 
+	//it will run on app start up and process the csv files from input folder every 10 seconds
+/*	@Scheduled(fixedRate = 10000)
+	public void perform() throws Exception {
+		System.out.println(" Job Started at :"+ new Date());
+		JobParameters param = new JobParametersBuilder()
+				.addString("JobID", String.valueOf(System.currentTimeMillis()))
+				.toJobParameters();
+		
+		JobExecution execution = jobLauncher.run(myJob(), param);
+		System.out.println("Job finished with status :" + execution.getStatus());
+	} */
+	
+	//********* Basic taskExecutor ***************************//
 	@Bean
 	public TaskExecutor taskAsync() {
 		SimpleAsyncTaskExecutor taskExecutor = new SimpleAsyncTaskExecutor();
@@ -180,6 +204,7 @@ public class BatchConfiguration {
 		return taskExecutor;
 	}
 
+	//********* basic ThreadPoolTaskExecutor ***************************//
 	@Bean
 	public ThreadPoolTaskExecutor taskExecutor() {
 		ThreadPoolTaskExecutor taskExecutor = new ThreadPoolTaskExecutor();
@@ -190,6 +215,8 @@ public class BatchConfiguration {
 		return taskExecutor;
 	}
 
+	
+	//******************** for setting up the SimpleJobLauncher ***********************
 	@Bean
 	public ResourcelessTransactionManager transactionManager() {
 		return new ResourcelessTransactionManager();
@@ -214,21 +241,6 @@ public class BatchConfiguration {
 		launcher.setJobRepository(jobRepository);
 		return launcher;
 	}
-
-	// @Scheduled(cron = "0 */1 * * * ?")
-	@Scheduled(fixedRate = 10000)
-	public void perform() throws Exception {
-//		JobParameters params = new JobParametersBuilder().addString("JobID", String.valueOf(System.currentTimeMillis()))
-//				.toJobParameters();
-//
-//		System.out.println(">>>>>>>>>>>>>> " + System.currentTimeMillis());
-//		jobLauncher.run(myJob(), params);
-		
-		
-		System.out.println(" Job Started at :"+ new Date());
-		JobParameters param = new JobParametersBuilder().addString("JobID",
-		String.valueOf(System.currentTimeMillis())).toJobParameters();
-		JobExecution execution = jobLauncher.run(myJob(), param);
-		System.out.println("Job finished with status :" + execution.getStatus());
-	}
+	
+	//******************** for setting up the SimpleJobLauncher ***********************
 }

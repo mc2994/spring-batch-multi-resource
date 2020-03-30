@@ -2,11 +2,8 @@ package com.infotech.batch.config;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
-
 import org.springframework.jdbc.core.RowMapper;
-
 import com.infotech.batch.model.Person;
-
 
 public class PersonRowMapper implements RowMapper<Person> {
 
@@ -21,5 +18,4 @@ public class PersonRowMapper implements RowMapper<Person> {
 		System.out.println("Person: "+person.toString());
 		return person;
 	}
-
 }

@@ -2,9 +2,7 @@ package com.infotech.batch.processor;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.springframework.batch.item.ItemProcessor;
-
 import com.infotech.batch.model.Person;
 
 public class PersonItemProcessor implements ItemProcessor<Person, Person> {
@@ -19,8 +17,6 @@ public class PersonItemProcessor implements ItemProcessor<Person, Person> {
         final Person transformedPerson = new Person(person.getId(),firstName, lastName,person.getEmail(),person.getAge());
 
         log.info("Converting (" + person + ") into (" + transformedPerson + ")");
-
         return transformedPerson;
     }
-
 }
