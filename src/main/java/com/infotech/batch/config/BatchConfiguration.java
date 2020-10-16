@@ -2,7 +2,9 @@ package com.infotech.batch.config;
 
 import java.io.IOException;
 import java.util.Date;
+
 import javax.sql.DataSource;
+
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.JobParameters;
@@ -20,6 +22,8 @@ import org.springframework.batch.item.database.JdbcCursorItemReader;
 import org.springframework.batch.item.file.FlatFileItemReader;
 import org.springframework.batch.item.file.FlatFileItemWriter;
 import org.springframework.batch.item.file.MultiResourceItemReader;
+import org.springframework.batch.item.file.MultiResourceItemWriter;
+import org.springframework.batch.item.file.SimpleResourceSuffixCreator;
 import org.springframework.batch.item.file.mapping.BeanWrapperFieldSetMapper;
 import org.springframework.batch.item.file.mapping.DefaultLineMapper;
 import org.springframework.batch.item.file.transform.BeanWrapperFieldExtractor;
@@ -39,6 +43,7 @@ import org.springframework.core.task.TaskExecutor;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+
 import com.infotech.batch.model.Person;
 import com.infotech.batch.processor.PersonItemProcessor;
 
@@ -140,14 +145,27 @@ public class BatchConfiguration {
 		Resource[] resources = null;
 		ResourcePatternResolver patternResolver = new PathMatchingResourcePatternResolver();
 		try {
-			resources = patternResolver.getResources("classpath*:input/persons_*.csv");
+			resources = patternResolver.getResources("classpath*:input/*.csv");
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
+		
 		MultiResourceItemReader<Person> reader = new MultiResourceItemReader<Person>();
 		reader.setResources(resources);
 		reader.setDelegate(reader());
 		return reader;
+	}
+	
+	//  this will write multiple csv files from the database
+	@Bean
+	public MultiResourceItemWriter<Person> multiResourceItemWriter() {	
+		Resource aaaaaaaa = new FileSystemResource("output/outputData.csv");
+		
+		MultiResourceItemWriter<Person> writer = new MultiResourceItemWriter<Person>();
+		writer.setItemCountLimitPerResource(20);
+		writer.setResource(aaaaaaaa);
+		writer.setResourceSuffixCreator(new SimpleResourceSuffixCreator());
+		return writer;
 	}
 
 	@Bean
@@ -168,7 +186,7 @@ public class BatchConfiguration {
 				.reader(multiResourceItemReader1()) // read multiple csv
 				.processor(processor())
 				.writer(itemWriter()) // save data to db
-				//.taskExecutor(taskAsync()) //multi threaded
+				.taskExecutor(taskAsync()) //multi threaded
 				.build();
 	}
 
@@ -179,28 +197,32 @@ public class BatchConfiguration {
 				.reader(dbReader()) // read data from db
 				.processor(processor())
 				.writer(writer()) // write data to csv file
-				//.taskExecutor(taskAsync()) //multi threaded
+				//.writer(multiResourceItemWriter()) 
+				.taskExecutor(taskAsync()) //multi threaded
 				.build();
 	}
 
 	//it will run on app start up and process the csv files from input folder every 10 seconds
-/*	@Scheduled(fixedRate = 10000)
-	public void perform() throws Exception {
-		System.out.println(" Job Started at :"+ new Date());
-		JobParameters param = new JobParametersBuilder()
-				.addString("JobID", String.valueOf(System.currentTimeMillis()))
-				.toJobParameters();
-		
-		JobExecution execution = jobLauncher.run(myJob(), param);
-		System.out.println("Job finished with status :" + execution.getStatus());
-	} */
+	
+//	@Autowired
+//	private Job job;
+//	
+//	@Scheduled(fixedRate = 10000)
+//	public void perform() throws Exception {
+//		System.out.println(" Job Started at :"+ new Date());
+//		JobParameters param = new JobParametersBuilder()
+//				.addString("JobID", String.valueOf(System.currentTimeMillis()))
+//				.toJobParameters();
+//		
+//		JobExecution execution = jobLauncher.run(job, param);
+//		System.out.println("Job finished with status :" + execution.getStatus());
+//	} 
 	
 	//********* Basic taskExecutor ***************************//
 	@Bean
 	public TaskExecutor taskAsync() {
 		SimpleAsyncTaskExecutor taskExecutor = new SimpleAsyncTaskExecutor();
 		taskExecutor.setConcurrencyLimit(5);
-		System.out.println(">>>>>>>> ");
 		return taskExecutor;
 	}
 

@@ -37,7 +37,7 @@ public class LoadController {
 	public BatchStatus load() throws JobParametersInvalidException, JobExecutionAlreadyRunningException,
 			JobRestartException, JobInstanceAlreadyCompleteException {
 
-		Map<String, JobParameter> maps = new HashMap<>();
+		Map<String, JobParameter> maps = new HashMap<String, JobParameter>();
 		maps.put("time", new JobParameter(System.currentTimeMillis()));
 		JobParameters parameters = new JobParameters(maps);
 		JobExecution jobExecution = jobLauncher.run(job, parameters);
@@ -66,7 +66,7 @@ public class LoadController {
 		}
 
 		// Launch the Batch Job
-		Map<String, JobParameter> maps = new HashMap<>();
+		Map<String, JobParameter> maps = new HashMap<String, JobParameter>();
 		maps.put("time", new JobParameter(System.currentTimeMillis()));
 		JobParameters parameters = new JobParameters(maps);
 
